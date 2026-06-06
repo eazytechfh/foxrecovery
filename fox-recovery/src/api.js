@@ -1,20 +1,13 @@
 const BASE = "https://tlwjbudrndrenlmffsld.supabase.co/functions/v1/cadastro";
 
-async function call(method, params = {}) {
-  let url = BASE;
-  let body;
+async function call(method, jwt, body) {
+  const headers = { "Content-Type": "application/json" };
+  if (jwt) headers["Authorization"] = `Bearer ${jwt}`;
 
-  if (method === "GET") {
-    const qs = new URLSearchParams(params).toString();
-    url = `${BASE}?${qs}`;
-  } else {
-    body = JSON.stringify(params);
-  }
-
-  const res = await fetch(url, {
+  const res = await fetch(BASE, {
     method,
-    headers: { "Content-Type": "application/json" },
-    body,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
   });
 
   const data = await res.json();
@@ -23,11 +16,10 @@ async function call(method, params = {}) {
 }
 
 // Converte profile + postOp para o schema do banco
-function toPayload(profile, postOp) {
+function toPayload(profile, postOp, onboardingComplete = false) {
   return {
-    cpf: profile.cpf || null,
-    email: profile.email || null,
     name: profile.name,
+    phone: profile.phone || null,
     genero: profile.genero || null,
     age: profile.age ? Number(profile.age) : null,
     weight: profile.weight ? Number(profile.weight) : null,
@@ -53,15 +45,15 @@ function toPayload(profile, postOp) {
     placa: !!postOp.placa,
     placa_start: postOp.placa_start || null,
     eletroterapia: postOp.eletroterapia || [],
+    onboarding_complete: onboardingComplete,
   };
 }
 
-// Converte resposta do banco de volta para os estados do app
+// Converte linha do banco para os estados do app
 export function fromPayload(row) {
   const profile = {
-    cpf: row.cpf || "",
-    email: row.email || "",
     name: row.name || "",
+    phone: row.phone || "",
     genero: row.genero || "",
     age: row.age ? String(row.age) : "",
     weight: row.weight ? String(row.weight) : "",
@@ -90,21 +82,26 @@ export function fromPayload(row) {
     placa_start: row.placa_start || "",
     eletroterapia: row.eletroterapia || [],
   };
-  return { profile, postOp, id: row.id };
+  return {
+    profile,
+    postOp,
+    id: row.id,
+    onboardingComplete: !!row.onboarding_complete,
+    email: row.email || "",
+  };
 }
 
-export async function criarCadastro(profile, postOp) {
-  return call("POST", toPayload(profile, postOp));
+// Buscar o próprio cadastro (usuário autenticado)
+export async function buscarMeuCadastro(jwt) {
+  return call("GET", jwt);
 }
 
-export async function atualizarCadastro(id, profile, postOp) {
-  return call("PATCH", { id, ...toPayload(profile, postOp) });
+// Salvar onboarding completo
+export async function salvarOnboarding(jwt, profile, postOp) {
+  return call("PATCH", jwt, toPayload(profile, postOp, true));
 }
 
-export async function buscarPorCpf(cpf) {
-  return call("GET", { cpf: cpf.replace(/\D/g, "") });
-}
-
-export async function buscarPorEmail(email) {
-  return call("GET", { email });
+// Atualizar dados sem marcar onboarding como completo
+export async function atualizarCadastro(jwt, profile, postOp) {
+  return call("PATCH", jwt, toPayload(profile, postOp, false));
 }
